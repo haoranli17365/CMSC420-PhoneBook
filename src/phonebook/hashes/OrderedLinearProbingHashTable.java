@@ -1,6 +1,9 @@
 package phonebook.hashes;
 
+import java.util.ArrayList;
+
 import phonebook.exceptions.UnimplementedMethodException;
+import phonebook.utils.KVPair;
 import phonebook.utils.PrimeGenerator;
 import phonebook.utils.Probes;
 
@@ -12,7 +15,7 @@ import phonebook.utils.Probes;
  * inserted without collisions. {@link QuadraticProbingHashTable} is a {@link HashTable} that
  * tries to avoid this problem, albeit sacrificing cache locality.</p>
  *
- * @author YOUR NAME HERE!
+ * @author Haoran Li
  *
  * @see HashTable
  * @see SeparateChainingHashTable
@@ -25,7 +28,8 @@ public class OrderedLinearProbingHashTable extends OpenAddressingHashTable {
     /* ********************************************************************/
     /* ** INSERT ANY PRIVATE METHODS OR FIELDS YOU WANT TO USE HERE: ******/
     /* ********************************************************************/
-
+    private boolean is_soft;
+    private int tombstone_counter;
     /* ******************************************/
     /*  IMPLEMENT THE FOLLOWING PUBLIC METHODS: */
     /* **************************************** */
@@ -36,7 +40,11 @@ public class OrderedLinearProbingHashTable extends OpenAddressingHashTable {
      *               we want soft deletion, {@code false} otherwise.
      */
     public OrderedLinearProbingHashTable(boolean soft){
-        throw new UnimplementedMethodException(); // ERASE THIS LINE AFTER IMPLEMENTING THIS METHOD!
+        this.is_soft = soft;
+        this.count = 0;
+        this.tombstone_counter = 0;
+        this.primeGenerator = new PrimeGenerator();
+        this.table = new KVPair[primeGenerator.getCurrPrime()];
     }
 
 
@@ -62,12 +70,65 @@ public class OrderedLinearProbingHashTable extends OpenAddressingHashTable {
      */
     @Override
     public Probes put(String key, String value) {
-        throw new UnimplementedMethodException(); // ERASE THIS LINE AFTER IMPLEMENTING THIS METHOD!
+        if (key == null || value == null){
+            throw new IllegalArgumentException();
+        }else{
+            int probes_counter = 0;
+            // if resize is needed
+            if (0.5 < ((double)this.count)/(double)this.table.length){
+                ArrayList<KVPair> temp = new ArrayList<>();
+                for (KVPair pair : this.table){
+                    if(pair != null && pair != this.TOMBSTONE){
+                        temp.add(pair);
+                    }
+                    probes_counter ++;
+                }
+                this.count = 0;
+                this.tombstone_counter = 0;
+                this.table = new KVPair[this.primeGenerator.getNextPrime()];
+                if (temp.size() != 0){
+                    for(KVPair p : temp){
+                        probes_counter += put(p.getKey(),p.getValue()).getProbes();
+                    }
+                } 
+            }
+            // inserting the new element
+            int target_address = this.hash(key);
+            KVPair new_pair = new KVPair(key, value);
+            while(this.table[target_address] != null){
+                if (this.table[target_address].getKey().compareTo(new_pair.getKey()) > 0 && this.table[target_address] != this.TOMBSTONE){
+                    KVPair temp_pair = this.table[target_address];
+                    this.table[target_address] = new_pair;
+                    new_pair = temp_pair;
+                }else{
+                    probes_counter ++;
+                    target_address = (target_address + 1 == this.table.length) ? 0 : target_address + 1;
+                }
+            }
+            probes_counter ++;
+            this.table[target_address] = new_pair;
+            this.count ++;
+            return new Probes(value, probes_counter);
+        }
     }
 
     @Override
     public Probes get(String key) {
-        throw new UnimplementedMethodException(); // ERASE THIS LINE AFTER IMPLEMENTING THIS METHOD!
+        int target_address = this.hash(key);
+        int probes_counter = 1;
+        while(this.table[target_address] != null){
+            if (this.table[target_address].getKey().compareTo(key) >= 0 && this.table[target_address] != this.TOMBSTONE){
+                if (this.table[target_address].getKey().equals(key)){
+                    return new Probes(table[target_address].getValue(), probes_counter);
+                }else{
+                    return new Probes(null, probes_counter);
+                }
+            }else{
+                probes_counter ++;
+                target_address = (target_address + 1 == this.table.length) ? 0 : target_address + 1;
+            }
+        }
+        return new Probes(null, probes_counter);
     }
 
 
@@ -81,27 +142,92 @@ public class OrderedLinearProbingHashTable extends OpenAddressingHashTable {
      */
     @Override
     public Probes remove(String key) {
-        throw new UnimplementedMethodException(); // ERASE THIS LINE AFTER IMPLEMENTING THIS METHOD!
+        int probes_counter = 1;
+        int target_address = this.hash(key);
+        if (this.is_soft){ // soft deletion
+            while(this.table[target_address] != null){
+                // if current key is the one to be deleted, and it's not previously set as a TOMBSTONE.
+                if(this.table[target_address].getKey().compareTo(key) >= 0 && this.table[target_address] != this.TOMBSTONE){
+                    if (this.table[target_address].getKey().equals(key)){
+                        String ret_value = this.table[target_address].getValue();
+                        this.table[target_address] = this.TOMBSTONE; // set the target to TOMBSTONE
+                        this.tombstone_counter ++;
+                        return new Probes(ret_value, probes_counter);
+                    }else{
+                        return new Probes(null, probes_counter); // fail to delete.
+                    }
+                }else{
+                    probes_counter ++;
+                    target_address = (target_address+1) % this.table.length;
+                }
+            }
+            return new Probes(null, probes_counter);
+        }else{ // hard deletion
+            while(this.table[target_address] != null){
+                if(this.table[target_address].getKey().compareTo(key) >= 0 && this.table[target_address] != this.TOMBSTONE){
+                    // if current bucket is the target, set the bucket to null.
+                    if (this.table[target_address].getKey().equals(key)){
+                        String ret_val = this.table[target_address].getValue();
+                        this.table[target_address] = null; // set bucket to null
+                        this.count --;
+                        // Find all the buckets in the cluster, save them into the temp arraylist
+                        ArrayList<KVPair> temp = new ArrayList<>();
+                        int pair_ptr = (target_address + 1) % this.table.length; // check for the next bucket in cluster
+                        if(this.table[pair_ptr] == null){
+                            probes_counter++; // 1 probe if no collision chain
+                        }
+                        while (this.table[pair_ptr] != null){
+                            temp.add(this.table[pair_ptr]);
+                            this.table[pair_ptr] = null;
+                            this.count --; // remove all the elements in the cluster
+                            pair_ptr = (pair_ptr + 1) % this.table.length;
+                            probes_counter ++; // probe for checking the next non-null space
+                            if (this.table[pair_ptr] == null){ // if next one is null, the last check count as one probe
+                                probes_counter ++; 
+                            }
+                        }
+                        // re-insert every buckets from the cluster.
+                        if (temp.size() != 0){
+                            for(KVPair curr_pair : temp){ 
+                                probes_counter += (this.put(curr_pair.getKey(), curr_pair.getValue()).getProbes());
+                            }
+                        }
+                        return new Probes(ret_val, probes_counter);
+                    }else{
+                        return new Probes(null, probes_counter); // fail to delete.
+                    }
+                }else{
+                    probes_counter ++;
+                    target_address = (target_address+1) % this.table.length;
+                }
+            }
+            return new Probes(null, probes_counter);
+        }
     }
 
     @Override
     public boolean containsKey(String key) {
-        throw new UnimplementedMethodException(); // ERASE THIS LINE AFTER IMPLEMENTING THIS METHOD!
+        return (this.get(key).getValue() != null) ? true : false;
     }
 
     @Override
     public boolean containsValue(String value) {
-        throw new UnimplementedMethodException(); // ERASE THIS LINE AFTER IMPLEMENTING THIS METHOD!
+        for(int i=0;i<this.table.length;i++){
+            if(this.table[i].getValue().equals(value) && this.table[i] != this.TOMBSTONE){
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
     public int size() {
-        throw new UnimplementedMethodException(); // ERASE THIS LINE AFTER IMPLEMENTING THIS METHOD!
+        return this.count - this.tombstone_counter;
     }
 
     @Override
     public int capacity() {
-        throw new UnimplementedMethodException(); // ERASE THIS LINE AFTER IMPLEMENTING THIS METHOD!
+        return this.table.length;
     }
 
 }

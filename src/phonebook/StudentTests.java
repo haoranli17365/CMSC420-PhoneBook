@@ -19,7 +19,7 @@ import static phonebook.hashes.CollisionResolver.*;
  * <p> {@link StudentTests} is a place for you to write your tests for {@link Phonebook} and all the various
  * {@link HashTable} instances.</p>
  *
- * @author YOUR NAME HERE!
+ * @author Haoran Li
  * @see Phonebook
  * @see HashTable
  * @see SeparateChainingHashTable
@@ -192,20 +192,22 @@ public class StudentTests {
         assertEquals(1, lp.put("Tiffany", "894-59-0011").getProbes());
         assertEquals(2, lp.put("Jessie", "705-12-7500").getProbes());
         assertEquals(1, lp.put("Mary", "888-1212-3340").getProbes());
-
-
         assertEquals(1, lp.get("Arnold").getProbes());
         assertEquals("894-59-0011", lp.get("Arnold").getValue());
         assertEquals(1, lp.get("Tiffany").getProbes());
         assertEquals(2, lp.get("Jessie").getProbes());
         assertEquals(1, lp.get("Mary").getProbes());
 
+        
+
         // Search fail
         assertEquals(2, lp.get("Jerry").getProbes());
         assertEquals(2, lp.remove("Jerry").getProbes());
         assertEquals(null, lp.remove("Jerry").getValue());
-
+        System.out.println("After delete Jessie");
+        
         assertEquals(3, lp.remove("Jessie").getProbes());
+        lp.printTable();
         assertEquals(2, lp.remove("Arnold").getProbes());
         assertEquals(2, lp.remove("Tiffany").getProbes());
         assertEquals(2, lp.remove("Mary").getProbes());
@@ -224,14 +226,17 @@ public class StudentTests {
 
         for(String s: add1) {
             lp.put(s, s);
+            
         }
-
         for (String s: remove1) {
             lp.remove(s);
         }
-
+        lp.printTable();
         for(String s: add2) {
             lp.put(s, s);
+            System.out.println( "After "+ s + " the size: " + lp.size());
+            System.out.println( "After "+ s + " the capacity: " + lp.capacity());
+            lp.printTable();
         }
 
         assertEquals("After additions and deletions, and additions again, the capacity should be 23, but get " + lp.capacity() + ".", 23, lp.capacity());
@@ -241,5 +246,13 @@ public class StudentTests {
 
     }
 
+    @Test
+    public void testQP(){
+        QuadraticProbingHashTable qp = new QuadraticProbingHashTable(true);
+        assertEquals(1, qp.put("a", "a").getProbes());
+        
+        assertEquals(1, qp.put("n", "n").getProbes());
+        qp.printTable();
+    }
 
 }
